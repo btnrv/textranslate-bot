@@ -1,5 +1,5 @@
 import nextcord
-from nextcord import Interaction
+from nextcord import Interaction, SlashOption
 from nextcord.ext import commands, application_checks
 import logging
 import os
@@ -30,7 +30,7 @@ class Messages(commands.Cog):
         if message.author.id in list(dataBase.keys()):
             await message.delete()
             translator = Translator(from_lang=dataBase[message.author.id][0], 
-                                    to_lang=dataBase[message.author.id][1])
+                                    to_lang=dataBase[message.author.id][1], provider="deepl")
             translatedMessage = translator.translate(message.content)
             print(f"{message.content} has been translated to '{translatedMessage}'")
             em = nextcord.Embed(description=translatedMessage)
@@ -56,6 +56,9 @@ class Messages(commands.Cog):
                      from_lang: str, to_lang: str):
         await interaction.response.defer()
         global dataBase
+        if target_user.bot:
+            await interaction.followup.send(content="Do not track bot users!")
+            return
         if target_user.id in list(dataBase.keys()):
             del dataBase[target_user.id]
             em = nextcord.Embed(
@@ -76,6 +79,34 @@ class Messages(commands.Cog):
             em.set_footer(icon_url = interaction.user.avatar.url,
                         text = f"Command ran by {interaction.user.global_name}"
                         )
+        await interaction.followup.send(embed=em)
+
+    @nextcord.slash_command(
+        name="history",
+        description="Translate the last specific amount of messages in a channel."
+    )
+    async def history(self, interaction: Interaction, 
+                     from_lang: str, to_lang: str,
+                     amount: int = SlashOption(min_value=5, max_value=50)
+                     ):
+        resultMessage = ""
+        await interaction.response.defer(ephemeral=True)
+        translator = Translator(from_lang=from_lang, to_lang=to_lang)
+        messagesList = await interaction.channel.history(limit=amount+1).flatten()
+        for message in messagesList:
+            if message.author.bot:
+                messagesList.remove(message)
+        messagesList.reverse()
+        for message in messagesList:
+            resultMessage += f"**{message.author}:**\n {translator.translate(message.content)}\n"
+        em = nextcord.Embed(
+                color=0x2ecc71,
+                title=":white_check_mark: **Success!**",
+                description=resultMessage[:-2]
+                )
+        em.set_footer(icon_url = interaction.user.avatar.url,
+                    text = "This chat history is translated."
+                    )
         await interaction.followup.send(embed=em)
 
 def setup(bot):
